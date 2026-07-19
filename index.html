@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Compressor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF.js for rendering and extracting content (used for compression technique) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- pdf-lib for creating the new PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#ef4444', // Red-500 for PDF theme
+                        secondary: '#fca5a5',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .drop-zone {
+            transition: all 0.3s ease;
+            border-width: 2px;
+        }
+
+        .drop-zone.dragover {
+            background-color: #fef2f2; /* red-50 */
+            border-color: #ef4444;
+            transform: scale(1.02);
+        }
+
+        /* Loading spinner animation */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #ffffff;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Smooth reveal for sections */
+        .reveal {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col selection:bg-primary selection:text-white">
+
+    <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary text-white rounded-lg flex items-center justify-center text-xl shadow-md">
+                    <i class="fa-solid fa-file-pdf"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">Kompres 
+				<span class="text-primary">PDF</span></h1>
+            </div>
+            <div class="text-sm text-slate-500 font-medium bg-slate-100 px-3 py-1 rounded-full">
+                <i class="fa-solid fa-lock mr-1"></i> 100% Secure (Local Processing)
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-3xl mx-auto w-full px-4 py-10 flex flex-col items-center">
+        
+        <div class="text-center mb-8 reveal">
+            <h2 class="text-3xl md:text-4xl font-extrabold mb-3 text-slate-900">Compress PDF Documents</h2>
+            <p class="text-slate-500 max-w-lg mx-auto">Reduce file size while optimizing for maximal PDF quality. Everything happens right in your browser.</p>
+        </div>
+
+        <!-- State 1: Upload -->
+        <div id="uploadSection" class="w-full bg-white rounded-2xl shadow-xl border border-slate-100 p-8 reveal">
+            <div id="dropZone" class="drop-zone border-dashed border-slate-300 rounded-xl p-12 flex flex-col items-center justify-center cursor-pointer bg-slate-50 group hover:bg-slate-100">
+                <div class="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 text-primary text-3xl group-hover:scale-110 transition-transform duration-300">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">Click to upload or drag and drop</h3>
+                <p class="text-slate-500 text-sm mb-6 text-center">Supported format: PDF only</p>
+                <input type="file" id="fileInput" accept=".pdf" class="hidden">
+                <button class="bg-primary hover:bg-red-600 text-white font-medium py-3 px-8 rounded-lg transition-colors shadow-md hover:shadow-lg flex items-center gap-2" onclick="document.getElementById('fileInput').click()">
+                    Select PDF File
+                </button>
+            </div>
+        </div>
+
+        <!-- State 2: Options & Processing -->
+        <div id="optionsSection" class="w-full hidden reveal">
+            <div class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                <!-- File Info Header -->
+                <div class="bg-slate-50 border-b border-slate-100 p-6 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-red-100 text-primary rounded-lg flex items-center justify-center text-xl shrink-0">
+                        <i class="fa-regular fa-file-pdf"></i>
+                    </div>
+                    <div class="flex-grow min-w-0">
+                        <h4 id="fileNameDisplay" class="font-semibold text-lg truncate" title="filename.pdf">filename.pdf</h4>
+                        <p id="fileSizeDisplay" class="text-sm text-slate-500">2.5 MB</p>
+                    </div>
+                    <button id="cancelBtn" class="text-slate-400 hover:text-slate-600 p-2" title="Change file">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="p-6 md:p-8">
+                    <!-- Compression Settings -->
+                    <div class="mb-8" id="settingsContainer">
+                        <h5 class="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-slate-400"></i> Compression Level
+                        </h5>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Low Comp -->
+                            <label class="cursor-pointer relative">
+                                <input type="radio" name="compLevel" value="low" class="peer sr-only">
+                                <div class="rounded-xl border-2 border-slate-200 p-4 hover:border-red-200 peer-checked:border-primary peer-checked:bg-red-50 transition-all text-center">
+                                    <div class="font-bold text-slate-800 mb-1">Less Compression</div>
+                                    <div class="text-xs text-slate-500">High Quality, Larger File</div>
+                                    <div class="absolute top-3 right-3 text-primary opacity-0 peer-checked:opacity-100">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <!-- Med Comp (Default) -->
+                            <label class="cursor-pointer relative">
+                                <input type="radio" name="compLevel" value="medium" class="peer sr-only" checked>
+                                <div class="rounded-xl border-2 border-slate-200 p-4 hover:border-red-200 peer-checked:border-primary peer-checked:bg-red-50 transition-all text-center">
+                                    <div class="font-bold text-slate-800 mb-1">Recommended</div>
+                                    <div class="text-xs text-slate-500">Good Quality, Good Size</div>
+                                    <div class="absolute top-3 right-3 text-primary opacity-0 peer-checked:opacity-100">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <!-- High Comp -->
+                            <label class="cursor-pointer relative">
+                                <input type="radio" name="compLevel" value="high" class="peer sr-only">
+                                <div class="rounded-xl border-2 border-slate-200 p-4 hover:border-red-200 peer-checked:border-primary peer-checked:bg-red-50 transition-all text-center">
+                                    <div class="font-bold text-slate-800 mb-1">Extreme Compression</div>
+                                    <div class="text-xs text-slate-500">Lower Quality, Smallest File</div>
+                                    <div class="absolute top-3 right-3 text-primary opacity-0 peer-checked:opacity-100">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <div class="mt-4 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm flex gap-3 items-start">
+                            <i class="fa-solid fa-circle-info mt-0.5"></i>
+                            <p><strong>Catatan:</strong> Kompresi berbasis browser bekerja paling baik pada PDF yang berisi gambar hasil pindaian (scan) atau foto. PDF yang didominasi teks mungkin tidak mengalami pengurangan ukuran yang signifikan.</p>
+                        </div>
+                    </div>
+
+                    <!-- Process Button & Progress -->
+                    <div class="flex flex-col items-center">
+                        <button id="compressBtn" class="bg-primary hover:bg-red-600 w-full md:w-auto text-white font-bold py-4 px-12 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-3 text-lg">
+                            <span>Compress PDF</span>
+                            <i class="fa-solid fa-compress"></i>
+                        </button>
+
+                        <div id="progressContainer" class="hidden w-full mt-6">
+                            <div class="flex justify-between text-sm font-medium text-slate-600 mb-2">
+                                <span id="progressStatus">Analyzing document...</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                                <div id="progressBar" class="bg-primary h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- State 3: Result -->
+        <div id="resultSection" class="w-full hidden reveal">
+            <div class="bg-white rounded-2xl shadow-xl border border-slate-100 p-8 text-center">
+                <div class="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h3 class="text-2xl font-bold mb-2">Compression Complete!</h3>
+                
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 gap-4 max-w-md mx-auto my-8">
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div class="text-slate-500 text-sm font-medium mb-1">Original Size</div>
+                        <div id="resultOldSize" class="text-xl font-bold text-slate-700 line-through decoration-red-400">5.2 MB</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-xl border border-green-100">
+                        <div class="text-green-700 text-sm font-medium mb-1">New Size</div>
+                        <div id="resultNewSize" class="text-2xl font-extrabold text-green-600">1.1 MB</div>
+                        <div id="resultSavings" class="text-xs font-bold text-white bg-green-500 inline-block px-2 py-0.5 rounded-full mt-1">
+                            -75%
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4 justify-center mt-8">
+                    <button id="downloadBtn" class="bg-primary hover:bg-red-600 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i>
+                        Download Compressed PDF
+                    </button>
+                    <button id="startOverBtn" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium py-3 px-8 rounded-xl transition-all flex items-center justify-center gap-2">
+                        Compress Another File
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden canvas for image rendering -->
+        <canvas id="hiddenCanvas" style="display: none;"></canvas>
+
+    </main>
+
+    <footer class="mt-auto py-6 text-center text-slate-400 text-sm flex flex-col items-center gap-2">
+        <p>Semua proses dilakukan langsung di browser Anda. Tidak ada file yang dikirim ke server.</p>
+        <p class="font-medium text-slate-500">Created by Ari Suryanto</p>
+    </footer>
+
+    <!-- Error Modal -->
+    <div id="errorModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl transform scale-95 transition-transform duration-200">
+            <div class="text-red-500 text-4xl mb-4 text-center">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+            <h3 class="text-lg font-bold text-center mb-2 text-slate-800">Oops! Something went wrong</h3>
+            <p id="errorMessage" class="text-slate-600 text-center mb-6">Failed to process the PDF.</p>
+            <button onclick="closeError()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2 rounded-lg transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Setup PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // UI Elements
+        const uploadSection = document.getElementById('uploadSection');
+        const optionsSection = document.getElementById('optionsSection');
+        const resultSection = document.getElementById('resultSection');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const fileSizeDisplay = document.getElementById('fileSizeDisplay');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const compressBtn = document.getElementById('compressBtn');
+        const settingsContainer = document.getElementById('settingsContainer');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressPercent = document.getElementById('progressPercent');
+        
+        const resultOldSize = document.getElementById('resultOldSize');
+        const resultNewSize = document.getElementById('resultNewSize');
+        const resultSavings = document.getElementById('resultSavings');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const startOverBtn = document.getElementById('startOverBtn');
+        const errorModal = document.getElementById('errorModal');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // State variables
+        let currentFile = null;
+        let compressedBlob = null;
+        let isCompressing = false;
+
+        // Compression Settings Map (scale factor, jpeg quality)
+        const COMPRESSION_SETTINGS = {
+            'low': { scale: 1.5, quality: 0.8 },
+            'medium': { scale: 1.0, quality: 0.6 },
+            'high': { scale: 0.75, quality: 0.4 }
+        };
+
+        // --- Drag and Drop Handlers ---
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFileSelect, false);
+
+        function handleDrop(e) {
+            if (isCompressing) return;
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFileSelect(e) {
+            if (isCompressing) return;
+            const files = e.target.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            if (file.type !== 'application/pdf') {
+                showError('Please upload a valid PDF file.');
+                return;
+            }
+
+            if (file.size > 50 * 1024 * 1024) { // 50MB limit for browser stability
+                showError('File is too large. Please upload a PDF smaller than 50MB for browser-based processing.');
+                return;
+            }
+
+            currentFile = file;
+            
+            // Update UI
+            fileNameDisplay.textContent = file.name;
+            fileNameDisplay.title = file.name;
+            fileSizeDisplay.textContent = formatBytes(file.size);
+            
+            // Switch view
+            uploadSection.classList.add('hidden');
+            optionsSection.classList.remove('hidden');
+            resetProgress();
+        }
+
+        cancelBtn.addEventListener('click', () => {
+            if (isCompressing) return;
+            resetApp();
+        });
+
+        startOverBtn.addEventListener('click', resetApp);
+
+        function resetApp() {
+            currentFile = null;
+            compressedBlob = null;
+            fileInput.value = '';
+            uploadSection.classList.remove('hidden');
+            optionsSection.classList.add('hidden');
+            resultSection.classList.add('hidden');
+            resetProgress();
+        }
+
+        function resetProgress() {
+            progressContainer.classList.add('hidden');
+            settingsContainer.classList.remove('hidden');
+            compressBtn.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressStatus.textContent = 'Preparing...';
+        }
+
+        function updateProgress(percent, statusText) {
+            progressBar.style.width = `${percent}%`;
+            progressPercent.textContent = `${Math.round(percent)}%`;
+            if (statusText) progressStatus.textContent = statusText;
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorModal.classList.remove('hidden');
+            errorModal.classList.add('flex');
+            
+            if (isCompressing) {
+                isCompressing = false;
+                resetProgress();
+            }
+        }
+
+        function closeError() {
+            errorModal.classList.add('hidden');
+            errorModal.classList.remove('flex');
+        }
+
+        // --- Core Compression Logic ---
+        
+        compressBtn.addEventListener('click', async () => {
+            if (!currentFile || isCompressing) return;
+            
+            isCompressing = true;
+            settingsContainer.classList.add('hidden');
+            compressBtn.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            
+            const selectedLevel = document.querySelector('input[name="compLevel"]:checked').value;
+            const settings = COMPRESSION_SETTINGS[selectedLevel];
+
+            try {
+                // Strategy: Browser-based compression is hard. The most reliable way 
+                // to reduce size purely client-side is to render each page as an image
+                // (using pdf.js) at a lower quality/resolution, and then create a new PDF
+                // containing those images (using pdf-lib). 
+                // Note: This flattens the PDF (loses text searchability/selection).
+                
+                updateProgress(5, 'Reading file...');
+                const arrayBuffer = await currentFile.arrayBuffer();
+                
+                updateProgress(10, 'Parsing document structure...');
+                
+                // Load PDF with PDF.js
+                const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+                const pdf = await loadingTask.promise;
+                const numPages = pdf.numPages;
+                
+                // Create new PDF with pdf-lib
+                const { PDFDocument } = PDFLib;
+                const newPdfDoc = await PDFDocument.create();
+                
+                const canvas = document.getElementById('hiddenCanvas');
+                const ctx = canvas.getContext('2d', { alpha: false }); // Optimize for non-transparent
+
+                for (let i = 1; i <= numPages; i++) {
+                    const progressBase = 10 + ((i - 1) / numPages) * 80;
+                    updateProgress(progressBase, `Compressing page ${i} of ${numPages}...`);
+                    
+                    // Render page to canvas
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: settings.scale });
+                    
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    
+                    // Fill white background first (prevents black background on transparent PDFs)
+                    ctx.fillStyle = "white";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    const renderContext = {
+                        canvasContext: ctx,
+                        viewport: viewport,
+                        background: 'white'
+                    };
+                    
+                    await page.render(renderContext).promise;
+                    
+                    // Get image data as JPEG with selected quality
+                    const imgDataUrl = canvas.toDataURL('image/jpeg', settings.quality);
+                    
+                    // Add to new PDF
+                    const imgBytes = dataUriToUint8Array(imgDataUrl);
+                    const pdfImage = await newPdfDoc.embedJpg(imgBytes);
+                    
+                    const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+                    newPage.drawImage(pdfImage, {
+                        x: 0,
+                        y: 0,
+                        width: viewport.width,
+                        height: viewport.height,
+                    });
+                    
+                    // Cleanup to save memory
+                    page.cleanup();
+                }
+
+                updateProgress(95, 'Generating final document...');
+                
+                // Save new PDF
+                const pdfBytes = await newPdfDoc.save();
+                compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+                
+                updateProgress(100, 'Done!');
+                
+                // Delay slightly to show 100%
+                setTimeout(() => {
+                    showResults(currentFile.size, compressedBlob.size);
+                }, 500);
+
+            } catch (error) {
+                console.error("Compression Error:", error);
+                showError("An error occurred during compression. The file might be corrupted, password protected, or too complex for browser processing.");
+            } finally {
+                isCompressing = false;
+            }
+        });
+
+        function showResults(oldSize, newSize) {
+            optionsSection.classList.add('hidden');
+            resultSection.classList.remove('hidden');
+            
+            resultOldSize.textContent = formatBytes(oldSize);
+            resultNewSize.textContent = formatBytes(newSize);
+            
+            // If the compressed size is somehow larger (happens with already heavily compressed text PDFs),
+            // tell them, but still offer the download.
+            if (newSize >= oldSize) {
+                resultSavings.textContent = "+0%";
+                resultSavings.className = "text-xs font-bold text-white bg-slate-500 inline-block px-2 py-0.5 rounded-full mt-1";
+                resultSavings.parentElement.classList.replace('bg-green-50', 'bg-slate-50');
+                resultSavings.parentElement.classList.replace('border-green-100', 'border-slate-200');
+                
+                setTimeout(() => {
+                    alert("Notice: Since we process this locally by rendering pages to images, text-heavy PDFs might actually increase in size. This tool works best for PDFs with lots of scanned images.");
+                }, 100);
+            } else {
+                const savingPercent = Math.round((1 - (newSize / oldSize)) * 100);
+                resultSavings.textContent = `-${savingPercent}%`;
+                resultSavings.className = "text-xs font-bold text-white bg-green-500 inline-block px-2 py-0.5 rounded-full mt-1";
+                resultSavings.parentElement.classList.replace('bg-slate-50', 'bg-green-50');
+                resultSavings.parentElement.classList.replace('border-slate-200', 'border-green-100');
+            }
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            if (!compressedBlob) return;
+            
+            const url = URL.createObjectURL(compressedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Insert '-compressed' before the extension
+            let newName = currentFile.name;
+            const dotIdx = newName.lastIndexOf('.');
+            if(dotIdx !== -1) {
+                newName = newName.substring(0, dotIdx) + '-compressed' + newName.substring(dotIdx);
+            } else {
+                newName += '-compressed.pdf';
+            }
+            
+            a.download = newName;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        });
+
+        // --- Utility Functions ---
+        
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+
+        // Convert base64 Data URI to Uint8Array for pdf-lib
+        function dataUriToUint8Array(dataURI) {
+            const base64Marker = ';base64,';
+            const base64Index = dataURI.indexOf(base64Marker) + base64Marker.length;
+            const base64 = dataURI.substring(base64Index);
+            const raw = window.atob(base64);
+            const rawLength = raw.length;
+            const array = new Uint8Array(new ArrayBuffer(rawLength));
+            for(let i = 0; i < rawLength; i++) {
+                array[i] = raw.charCodeAt(i);
+            }
+            return array;
+        }
+    </script>
+</body>
+</html>
